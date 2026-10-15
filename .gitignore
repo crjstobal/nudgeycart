@@ -1,0 +1,12 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.DS_Store
+store/wp/
+store/.mariadb/
+backend/data/
+__pycache__/
+.pytest_cache/
