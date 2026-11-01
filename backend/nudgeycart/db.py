@@ -10,21 +10,19 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS merchants (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    public_key TEXT UNIQUE NOT NULL,
-    admin_token TEXT UNIQUE NOT NULL,
+    secret_key TEXT UNIQUE NOT NULL,  -- held by the store plugin, server side only
     platform TEXT NOT NULL DEFAULT 'woocommerce',
-    store_url TEXT NOT NULL,
-    woo_user TEXT,
-    woo_app_password TEXT,
+    store_url TEXT,
     payee_email TEXT,            -- merchant's PayPal account (NULL = API caller account)
     billing_email TEXT,          -- where NudgeyCart sends its success-fee invoices
     currency TEXT NOT NULL DEFAULT 'USD',
     min_margin_pct REAL NOT NULL DEFAULT 0.25,
     max_discount_pct REAL NOT NULL DEFAULT 0.15,
-    shipping_flat REAL,          -- trusted shipping price; NULL = take it from the cart
     fee_pct REAL NOT NULL DEFAULT 0.05,
     control_pct INTEGER NOT NULL DEFAULT 10,
     test_mode INTEGER NOT NULL DEFAULT 1,
+    demo INTEGER NOT NULL DEFAULT 0,  -- self-registered WordPress Playground store
+    signup_ip_hash TEXT,
     created_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS nudges (
@@ -39,10 +37,11 @@ CREATE TABLE IF NOT EXISTS nudges (
     cart TEXT,
     cart_total REAL,
     currency TEXT,
-    state TEXT NOT NULL,              -- control | opened | offered | accepted | paid | dismissed
-    transcript TEXT NOT NULL DEFAULT '[]',
+    state TEXT NOT NULL,              -- control | skipped | offered | accepted | paid | dismissed | refunded
     reason_category TEXT,
+    confidence REAL,
     lever TEXT,
+    offer TEXT,                       -- shopper-facing offer as shown (JSON)
     discount_amount REAL DEFAULT 0,
     final_total REAL,
     message TEXT,
@@ -79,6 +78,11 @@ CREATE TABLE IF NOT EXISTS events (
     type TEXT NOT NULL,
     data TEXT,
     created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS market_prices (
+    key TEXT PRIMARY KEY,
+    data TEXT NOT NULL,               -- cheapest-first comparable listings (JSON)
+    fetched_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS invoices (
     id TEXT PRIMARY KEY,
@@ -122,7 +126,7 @@ def row(r) -> dict | None:
     if r is None:
         return None
     d = dict(r)
-    for k in ("signals", "cart", "transcript", "data"):
+    for k in ("signals", "cart", "offer", "data"):
         if k in d and isinstance(d[k], str):
             try:
                 d[k] = json.loads(d[k])

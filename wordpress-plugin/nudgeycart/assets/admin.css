@@ -1,0 +1,76 @@
+/* NudgeyCart merchant dashboard. Sits inside wp-admin, so it borrows its palette and type. */
+.nudgey-wrap {
+  --ng-ink: #1d2327; --ng-muted: #646970; --ng-line: #dcdcde; --ng-card: #fff;
+  --ng-accent: #2271b1; --ng-accent-soft: #f0f6fc; --ng-good: #00a32a; --ng-good-soft: #edfaef;
+  --ng-warn: #996800; --ng-warn-soft: #fcf9e8; --ng-bad: #d63638; --ng-bad-soft: #fcf0f1;
+  --ng-violet: #6d4bd6; --ng-violet-soft: #f3f0fd;
+  max-width: 1480px;
+}
+.nudgey-head { display: flex; align-items: center; gap: 12px; margin: 14px 0 6px; flex-wrap: wrap; }
+.nudgey-logo { width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #2271b1, #6d4bd6);
+  color: #fff; display: grid; place-items: center; font: 800 19px/1 -apple-system, sans-serif; }
+.nudgey-head h1 { padding: 0; margin: 0; font-size: 22px; }
+.nudgey-sub { margin: 2px 0 0; color: var(--ng-muted); }
+.nudgey-head-actions { margin-left: auto; display: flex; gap: 8px; }
+.nudgey-wrap .nav-tab-wrapper { margin-bottom: 14px; }
+.nudgey-wrap .notice.inline { margin: 0 0 14px; }
+
+.nudgey-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.nudgey-kpi { background: var(--ng-card); border: 1px solid var(--ng-line); border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
+.nudgey-kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--kpi, var(--ng-accent)); }
+.nudgey-kpi .l { color: var(--ng-muted); font-size: 12px; font-weight: 500; }
+.nudgey-kpi .v { font-size: 26px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; color: var(--ng-ink); }
+.nudgey-kpi .h { color: var(--ng-muted); font-size: 12px; margin-top: 2px; }
+.nudgey-kpi .v.pos { color: var(--ng-good); }
+
+.nudgey-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+.nudgey-span2 { grid-column: span 2; }
+@media (max-width: 1100px) { .nudgey-row { grid-template-columns: 1fr; } .nudgey-span2 { grid-column: auto; } }
+.nudgey-card { background: var(--ng-card); border: 1px solid var(--ng-line); border-radius: 10px; padding: 14px 16px; }
+.nudgey-card h2 { font-size: 13px; margin: 0 0 8px; color: var(--ng-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.nudgey-chart { height: 250px; }
+.nudgey-grid-card { margin-top: 12px; }
+.nudgey-grid-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.nudgey-grid-head h2 { margin: 0; }
+.nudgey-filters { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.nudgey-chip.button { border-radius: 999px; }
+.nudgey-chip.is-on { background: var(--ng-accent); border-color: var(--ng-accent); color: #fff; }
+.nudgey-grid { height: 520px; }
+
+/* grid cells */
+.ng-pill { display: inline-block; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 22px; }
+.ng-paid { background: var(--ng-good-soft); color: var(--ng-good); }
+.ng-offered, .ng-accepted { background: var(--ng-accent-soft); color: var(--ng-accent); }
+.ng-skipped { background: var(--ng-violet-soft); color: var(--ng-violet); }
+.ng-control { background: #f0f0f1; color: var(--ng-muted); }
+.ng-dismissed { background: var(--ng-warn-soft); color: var(--ng-warn); }
+.ng-refunded { background: var(--ng-bad-soft); color: var(--ng-bad); }
+.ng-lever { display: inline-flex; align-items: center; gap: 6px; }
+.ng-lever i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.ng-conf { display: flex; align-items: center; gap: 8px; }
+.ng-conf .bar { flex: 0 0 46px; height: 6px; background: #f0f0f1; border-radius: 99px; overflow: hidden; }
+.ng-conf .bar b { display: block; height: 100%; background: var(--ng-accent); border-radius: 99px; }
+.ng-why { color: var(--ng-muted); }
+
+/* drawer */
+.nudgey-drawer { position: fixed; top: 32px; right: 0; width: min(460px, 100%); height: calc(100% - 32px); background: #fff;
+  border-left: 1px solid var(--ng-line); box-shadow: -12px 0 32px rgba(0,0,0,.12); transform: translateX(105%);
+  transition: transform .2s ease; z-index: 9990; padding: 20px; overflow: auto; box-sizing: border-box; }
+.nudgey-drawer.open { transform: none; }
+.nudgey-drawer h3 { margin: 0 0 2px; font-size: 17px; }
+.nudgey-drawer .x { float: right; background: none; border: 0; font-size: 24px; color: var(--ng-muted); cursor: pointer; line-height: 1; }
+.nudgey-drawer .sec { margin-top: 16px; }
+.nudgey-drawer .sec h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ng-muted); }
+.nudgey-drawer .quote { background: var(--ng-accent-soft); border-radius: 10px; padding: 10px 12px; }
+.nudgey-drawer .quote b { display: block; }
+.nudgey-drawer ul.ev { margin: 0; padding-left: 18px; }
+.nudgey-drawer table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.nudgey-drawer td { padding: 4px 0; border-bottom: 1px solid #f0f0f1; }
+.nudgey-drawer td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.nudgey-drawer code { font-size: 12px; }
+
+/* settings */
+.nudgey-settings { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .nudgey-settings { grid-template-columns: 1fr; } }
+.nudgey-saved { color: var(--ng-good); font-weight: 600; margin-left: 8px; }
+.nudgey-empty { color: var(--ng-muted); padding: 30px; text-align: center; }

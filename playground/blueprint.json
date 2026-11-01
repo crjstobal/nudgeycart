@@ -1,0 +1,32 @@
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "meta": {
+    "title": "NudgeyCart demo store",
+    "description": "A WooCommerce store with NudgeyCart: an AI checkout closer that reads why a shopper is leaving and closes the sale with PayPal.",
+    "author": "nudgeycart"
+  },
+  "landingPage": "/shop/",
+  "preferredVersions": { "php": "8.3", "wp": "latest" },
+  "features": { "networking": true },
+  "steps": [
+    { "step": "login", "username": "admin", "password": "password" },
+    {
+      "step": "installPlugin",
+      "pluginData": { "resource": "wordpress.org/plugins", "slug": "woocommerce" },
+      "options": { "activate": true },
+      "progress": { "caption": "Installing WooCommerce" }
+    },
+    {
+      "step": "installPlugin",
+      "pluginData": { "resource": "url", "url": "{{API_BASE}}/plugin/nudgeycart.zip" },
+      "options": { "activate": false },
+      "progress": { "caption": "Installing NudgeyCart" }
+    },
+    { "step": "activatePlugin", "pluginPath": "nudgeycart/nudgeycart.php" },
+    {
+      "step": "runPHP",
+      "progress": { "caption": "Stocking the shelves and connecting to NudgeyCart" },
+      "code": "<?php require_once '/wordpress/wp-load.php'; update_option('nudgeycart_api_base', '{{API_BASE}}'); delete_transient('_wc_activation_redirect'); echo wp_json_encode(nudgeycart_seed_demo_store());"
+    }
+  ]
+}

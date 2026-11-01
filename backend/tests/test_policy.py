@@ -48,15 +48,46 @@ def test_margin_holds_after_clamp():
 
 def test_blocked_visitor_gets_no_money_levers():
     c = cart(("100", "10", 1))
-    levers = p.available_levers(c, G, discount_blocked=True)
-    assert "discount" not in levers and "free_shipping" not in levers
-    assert "pay_later" in levers
+    market = [p.MarketOffer(1, "rival.com", D("90"))]
+    levers = p.available_levers(c, G, discount_blocked=True, market=market)
+    assert not {"discount", "free_shipping", "price_match"} & set(levers)
+    assert "reassurance" in levers
 
 
 def test_unavailable_lever_falls_back():
-    c = cart(("10", "1", 1))  # below the Pay Later minimum
+    c = cart(("100", "10", 1))  # no market data, so no price match
     levers = p.available_levers(c, G, discount_blocked=False)
-    assert p.clamp("pay_later", 0, c, G, levers).lever == "reassurance"
+    assert p.clamp("price_match", 0, c, G, levers).lever == "reassurance"
+
+
+def test_price_match_uses_cheapest_competitor_per_line():
+    c = cart(("100", "50", 2), ("40", "10", 1))
+    market = [p.MarketOffer(1, "a.com", D("95")), p.MarketOffer(1, "b.com", D("92")),
+              p.MarketOffer(2, "c.com", D("45"))]  # dearer than ours: ignored
+    levers = p.available_levers(c, G, discount_blocked=False, market=market)
+    offer = p.clamp("price_match", 0, c, G, levers)
+    assert offer.discount_amount == D("16.00")  # (100 - 92) * 2
+    assert [m["competitor"] for m in offer.matches] == ["b.com"]
+
+
+def test_price_match_is_all_or_nothing_against_the_margin_floor():
+    # revenue 100, cost 65: headroom 7.14, matching 90 would need 10
+    c = cart(("100", "65", 1))
+    levers = p.available_levers(c, G, discount_blocked=False, market=[p.MarketOffer(1, "a.com", D("90"))])
+    assert "price_match" not in levers
+
+
+def test_price_match_may_exceed_the_discount_cap_but_not_the_margin():
+    # cost 10: margin headroom is huge, policy cap is 15; a 20 gap is still matched
+    c = cart(("100", "10", 1))
+    levers = p.available_levers(c, G, discount_blocked=False, market=[p.MarketOffer(1, "a.com", D("80"))])
+    assert p.clamp("price_match", 0, c, G, levers).discount_amount == D("20.00")
+
+
+def test_implausibly_cheap_listing_is_not_a_match():
+    c = cart(("100", "10", 1))
+    levers = p.available_levers(c, G, discount_blocked=False, market=[p.MarketOffer(1, "a.com", D("30"))])
+    assert "price_match" not in levers
 
 
 def test_free_shipping_zeroes_shipping():
@@ -83,3 +114,11 @@ def test_paypal_breakdown_adds_up():
     assert total == D(pu["amount"]["value"])
     items = sum(D(i["unit_amount"]["value"]) * int(i["quantity"]) for i in pu["items"])
     assert items == D(b["item_total"]["value"])
+
+
+def test_free_shipping_respects_margin_not_the_discount_cap():
+    # item 34, cost 14: discount cap 5.10 but margin headroom 14.00, so 7.99 shipping can be waived
+    c = cart(("34", "14", 1))
+    assert "free_shipping" in p.available_levers(c, G, discount_blocked=False)
+    thin = cart(("34", "22", 1))  # headroom 2.57: cannot waive 7.99
+    assert "free_shipping" not in p.available_levers(thin, G, discount_blocked=False)

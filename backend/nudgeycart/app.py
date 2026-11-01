@@ -1,21 +1,26 @@
+import io
+import json
 import logging
 import os
+import zipfile
 
 from fastapi import FastAPI, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
-from . import db, service, settings
+from . import db, demo, service, settings
 from .integrations import paypal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-app = FastAPI(title="NudgeyCart", version="0.1.0")
-# The widget runs on merchant storefronts; it only ever sends the public merchant key.
+app = FastAPI(title="NudgeyCart", version="0.2.0")
+# WordPress Playground runs PHP inside the visitor's browser, so the store plugin's
+# server-side calls arrive as browser fetches from playground.wordpress.net. Auth is the
+# merchant secret key in the Authorization header, never cookies, so open CORS is safe.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-WIDGET = settings.ROOT / "widget" / "nudgeycart.js"
-DASHBOARD = settings.ROOT / "dashboard" / "index.html"
+PLUGIN_DIR = settings.ROOT / "wordpress-plugin" / "nudgeycart"
+BLUEPRINT = settings.ROOT / "playground" / "blueprint.json"
 
 
 @app.on_event("startup")
@@ -33,88 +38,119 @@ def _ip(req: Request) -> str | None:
     return fwd.split(",")[0].strip() if fwd else (req.client.host if req.client else None)
 
 
+async def _body(req: Request) -> dict:
+    try:
+        b = await req.json()
+    except ValueError:
+        raise service.NudgeError(400, "JSON body required")
+    return b if isinstance(b, dict) else {}
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
 
 
-@app.get("/widget.js")
-def widget():
-    return FileResponse(WIDGET, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+# ---------- distribution: plugin zip and Playground demo ----------
+
+@app.get("/plugin/nudgeycart.zip")
+def plugin_zip():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(PLUGIN_DIR.rglob("*")):
+            if p.is_file() and p.name != ".DS_Store":
+                z.write(p, f"nudgeycart/{p.relative_to(PLUGIN_DIR)}")
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Cache-Control": "no-cache",
+                             "Content-Disposition": "attachment; filename=nudgeycart.zip"})
 
 
-@app.get("/dashboard")
-def dashboard():
-    return FileResponse(DASHBOARD, media_type="text/html")
+@app.get("/playground/blueprint.json")
+def blueprint(dev: int = 0):
+    """The demo store recipe, pointed at this API. dev=1 skips the plugin install (mounted locally)."""
+    bp = json.loads(BLUEPRINT.read_text().replace("{{API_BASE}}", settings.PUBLIC_URL))
+    if dev:
+        bp["steps"] = [s for s in bp["steps"] if s.get("pluginData", {}).get("resource") != "url"]
+    return JSONResponse(bp, headers={"Cache-Control": "no-cache"})
 
 
-# ---------- storefront (public key) ----------
+@app.get("/demo")
+def demo_redirect():
+    return RedirectResponse("https://playground.wordpress.net/?blueprint-url="
+                            f"{settings.PUBLIC_URL}/playground/blueprint.json")
+
+
+@app.post("/v1/demo-merchants")
+async def demo_merchant(req: Request):
+    return demo.create_demo_merchant(await _body(req), _ip(req))
+
+
+# ---------- store plugin (merchant secret key) ----------
 
 @app.get("/v1/config")
-def config(key: str):
-    m = service.merchant_by_key(key)
-    return {"paypal_client_id": settings.paypal_client_id(), "currency": m["currency"],
-            "sandbox": settings.paypal_env() != "live", "merchant": m["name"],
-            "test_mode": bool(m["test_mode"])}
+def config(authorization: str = Header("")):
+    return service.config(service.merchant_by_secret(authorization))
 
 
-@app.post("/v1/events")
-async def events(req: Request):
-    body = await req.json()
-    return service.record_events(service.merchant_by_key(body.get("key", "")), body)
+@app.put("/v1/settings")
+async def update_settings(req: Request, authorization: str = Header("")):
+    return service.update_settings(service.merchant_by_secret(authorization), await _body(req))
+
+
+@app.post("/v1/market/warm")
+async def warm(req: Request, authorization: str = Header("")):
+    return service.warm_market(service.merchant_by_secret(authorization), await _body(req))
 
 
 @app.post("/v1/nudges")
-async def open_nudge(req: Request):
-    body = await req.json()
-    return service.open_nudge(service.merchant_by_key(body.get("key", "")), body, _ip(req))
-
-
-@app.post("/v1/nudges/{nid}/reply")
-async def reply(nid: str, req: Request):
-    body = await req.json()
-    return service.reply(service.merchant_by_key(body.get("key", "")), nid, body)
+async def open_nudge(req: Request, authorization: str = Header("")):
+    return service.open_nudge(service.merchant_by_secret(authorization), await _body(req))
 
 
 @app.post("/v1/nudges/{nid}/dismiss")
-async def dismiss(nid: str, req: Request):
-    body = await req.json()
-    return service.dismiss(service.merchant_by_key(body.get("key", "")), nid)
+def dismiss(nid: str, authorization: str = Header("")):
+    return service.dismiss(service.merchant_by_secret(authorization), nid)
 
 
 @app.post("/v1/nudges/{nid}/paypal-order")
-async def paypal_order(nid: str, req: Request):
-    body = await req.json()
-    return service.create_paypal_order(service.merchant_by_key(body.get("key", "")), nid)
+def paypal_order(nid: str, authorization: str = Header("")):
+    return service.create_paypal_order(service.merchant_by_secret(authorization), nid)
 
 
 @app.post("/v1/nudges/{nid}/capture")
-async def capture(nid: str, req: Request):
-    body = await req.json()
-    return service.capture(service.merchant_by_key(body.get("key", "")), nid, str(body.get("order_id")))
+async def capture(nid: str, req: Request, authorization: str = Header("")):
+    body = await _body(req)
+    return service.capture(service.merchant_by_secret(authorization), nid, str(body.get("order_id")))
+
+
+@app.post("/v1/nudges/{nid}/store-order")
+async def store_order(nid: str, req: Request, authorization: str = Header("")):
+    return service.record_store_order(service.merchant_by_secret(authorization), nid, await _body(req))
 
 
 @app.post("/v1/conversions")
-async def conversions(req: Request):
-    body = await req.json()
-    return service.record_conversion(service.merchant_by_key(body.get("key", "")), body)
+async def conversions(req: Request, authorization: str = Header("")):
+    return service.record_conversion(service.merchant_by_secret(authorization), await _body(req))
 
 
-# ---------- merchant (admin token) ----------
+@app.post("/v1/events")
+async def events(req: Request, authorization: str = Header("")):
+    return service.record_events(service.merchant_by_secret(authorization), await _body(req))
+
 
 @app.get("/v1/merchant/summary")
-def summary(x_admin_token: str = Header("")):
-    return service.summary(service.merchant_by_admin(x_admin_token))
+def summary(authorization: str = Header("")):
+    return service.summary(service.merchant_by_secret(authorization))
 
 
 @app.get("/v1/merchant/invoices")
-def invoices(x_admin_token: str = Header("")):
-    return service.list_invoices(service.merchant_by_admin(x_admin_token))
+def invoices(authorization: str = Header("")):
+    return service.list_invoices(service.merchant_by_secret(authorization))
 
 
 @app.post("/v1/merchant/invoices")
-def invoice(x_admin_token: str = Header("")):
-    return service.invoice_fees(service.merchant_by_admin(x_admin_token))
+def invoice(authorization: str = Header("")):
+    return service.invoice_fees(service.merchant_by_secret(authorization))
 
 
 # ---------- PayPal webhooks ----------
