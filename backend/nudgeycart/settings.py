@@ -8,7 +8,9 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("NUDGEY_DATA_DIR", ROOT / "backend" / "data"))
 DB_PATH = DATA_DIR / "nudgeycart.sqlite3"
 
-PUBLIC_URL = os.environ.get("NUDGEY_PUBLIC_URL", "http://localhost:8797").rstrip("/")
+# Render sets RENDER_EXTERNAL_URL on every web service, so the hosted demo needs no extra setting.
+PUBLIC_URL = (os.environ.get("NUDGEY_PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL")
+              or "http://localhost:8797").rstrip("/")
 # Haiku: the decision sits between "shopper moves to leave" and the dialog, so latency wins.
 MODEL = os.environ.get("NUDGEY_MODEL", "claude-haiku-5-5")
 EFFORT = os.environ.get("NUDGEY_EFFORT", "low")

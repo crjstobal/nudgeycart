@@ -280,7 +280,10 @@
 
   function renderPayPal(container, offer) {
     container.innerHTML = '<div class="ndg-muted">Loading PayPal…</div>';
+    // The shopper can close the dialog while PayPal is still loading or rendering.
+    function gone(e) { if (document.body.contains(container)) console.warn(e); }
     loadPayPal().then(function (paypal) {
+      if (!document.body.contains(container)) return;
       container.innerHTML = "";
       var handlers = {
         style: { layout: "vertical", shape: "pill", height: 44, label: "pay" },
@@ -306,7 +309,7 @@
           var div = document.createElement("div");
           div.className = "ndg-btn";
           container.appendChild(div);
-          b.render(div);
+          b.render(div).catch(gone);
         }
       });
       if (paypal.Messages && offer.installment) {
@@ -314,7 +317,7 @@
         msg.className = "ndg-ppmsg";
         container.appendChild(msg);
         paypal.Messages({ amount: Number(offer.final_total), placement: "cart",
-                          style: { layout: "text", text: { size: 12 } } }).render(msg);
+                          style: { layout: "text", text: { size: 12 } } }).render(msg).catch(gone);
       }
     }).catch(function (e) { container.innerHTML = '<div class="ndg-error">' + esc(e.message) + "</div>"; });
   }

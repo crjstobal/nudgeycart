@@ -49,6 +49,7 @@ SCENARIOS = [
 SCENARIO_WEIGHTS = [16, 14, 18, 12, 8, 18, 14]
 # Probability that an offered nudge ends up paid, per lever.
 CLOSE_RATE = {"price_match": 0.16, "free_shipping": 0.14, "discount": 0.12, "reassurance": 0.07}
+HOLDOUT_RATE = 0.08
 COMPETITORS = ["amazon.com", "target.com", "walmart.com", "bestbuy.com", "rei.com"]
 TRIGGERS = ["exit_intent", "exit_intent", "exit_intent", "tab_return", "idle", "scroll_up"]
 
@@ -92,7 +93,7 @@ def seed_history(m: dict, catalog: list[dict], seed: int | None = None) -> int:
     rnd = random.Random(seed if seed is not None else m["id"])
     g = policy.Guardrails(m["min_margin_pct"], m["max_discount_pct"], m["fee_pct"])
     now = db.now()
-    nudges, conversions = [], []
+    nudges, conversions, holdout = [], [], []
     for day in range(SEED_DAYS, 0, -1):
         # A slow upward trend plus weekend bumps, so the charts look like a real store.
         base = 9 + (SEED_DAYS - day) * 0.15 + (4 if day % 7 in (0, 1) else 0)
@@ -112,8 +113,7 @@ def seed_history(m: dict, catalog: list[dict], seed: int | None = None) -> int:
             if group == "control":
                 row.update(state="control", signals="{}")
                 nudges.append(row)
-                if rnd.random() < 0.08:
-                    conversions.append((visitor, float(cart.total), ts + 120))
+                holdout.append((visitor, float(cart.total), ts + 120))
                 continue
             reason, lever, evidence, why, signals = rnd.choices(SCENARIOS, SCENARIO_WEIGHTS)[0]
             offer = policy.Offer(lever=lever, item_total=cart.item_total, shipping=cart.shipping)
@@ -147,6 +147,10 @@ def seed_history(m: dict, catalog: list[dict], seed: int | None = None) -> int:
                 if rnd.random() < 0.06:
                     conversions.append((visitor, float(cart.total), ts + 600))
             nudges.append(row)
+    # Holdout shoppers convert on their own at about 8%. The group is small (10% of traffic), so the
+    # count is fixed instead of drawn per shopper: a random zero would make the uplift chart look broken.
+    if holdout:
+        conversions += rnd.sample(holdout, min(len(holdout), max(2, round(len(holdout) * HOLDOUT_RATE))))
     with db.conn() as c:
         for r in nudges:
             c.execute(f"INSERT INTO nudges ({','.join(r)}) VALUES ({','.join('?' * len(r))})", tuple(r.values()))
