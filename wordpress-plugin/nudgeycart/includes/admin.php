@@ -102,7 +102,7 @@ function nudgeycart_render_dashboard()
                         <p class="description">Minimum gross margin on any order NudgeyCart closes.</p></td></tr>
                     <tr><th scope="row"><label for="ng-discount">Max discount</label></th>
                         <td><input type="number" id="ng-discount" name="max_discount_pct" min="0" max="90" step="1" class="small-text"> %
-                        <p class="description">Cap for plain discounts. Price matches and free shipping only need to respect the margin floor.</p></td></tr>
+                        <p class="description">Cap for plain discounts. Price matches and free shipping only need to respect the margin floor. Under your free-shipping minimum, the agent first suggests an add-on that reaches it.</p></td></tr>
                     <tr><th scope="row"><label for="ng-holdout">Holdout group</label></th>
                         <td><input type="number" id="ng-holdout" name="control_pct" min="0" max="50" step="1" class="small-text"> %
                         <p class="description">Shoppers who are measured but never nudged. This is how the dashboard proves the uplift you pay for.</p></td></tr>
@@ -142,7 +142,7 @@ function nudgeycart_order_column_value($order): void
     $order = $order instanceof WC_Order ? $order : wc_get_order($order);
     $lever = $order ? $order->get_meta('_nudgey_lever') : '';
     if ($lever) {
-        $labels = ['price_match' => 'Price match', 'free_shipping' => 'Free shipping', 'discount' => 'Discount', 'reassurance' => 'Reassured'];
+        $labels = ['price_match' => 'Price match', 'top_up' => 'Cart top-up', 'free_shipping' => 'Free shipping', 'discount' => 'Discount', 'reassurance' => 'Reassured'];
         printf('<mark class="order-status status-processing"><span>%s</span></mark>', esc_html('Saved: ' . ($labels[$lever] ?? $lever)));
     }
 }

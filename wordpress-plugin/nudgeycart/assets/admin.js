@@ -10,6 +10,7 @@
 
   var LEVER = {
     price_match: { label: "Price match", color: "#00a32a" },
+    top_up: { label: "Cart top-up", color: "#0a7ea4" },
     free_shipping: { label: "Free shipping", color: "#2271b1" },
     discount: { label: "Discount", color: "#dba617" },
     reassurance: { label: "Reassurance", color: "#6d4bd6" },

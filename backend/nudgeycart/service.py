@@ -22,7 +22,7 @@ log = logging.getLogger("nudgeycart")
 DISCOUNT_COOLDOWN_DAYS = 30
 # Many shoppers share an IP (offices, mobile carriers), so the IP rule needs several hits.
 IP_DISCOUNT_LIMIT = 3
-MONEY_LEVERS = ("discount", "free_shipping", "price_match")
+MONEY_LEVERS = ("discount", "free_shipping", "price_match", "top_up")
 
 REASON_LABEL = {
     "price": "Price", "shipping_cost": "Shipping cost", "comparison_shopping": "Comparing prices",
@@ -66,17 +66,21 @@ def cart_from_plugin(m: dict, d: dict) -> policy.Cart:
     """Validate the cart the store plugin built from its own catalogue."""
     if (d.get("currency") or m["currency"]) != m["currency"]:
         raise NudgeError(400, f"cart currency must be {m['currency']}")
-    lines = []
-    for l in (d.get("lines") or [])[:50]:
-        cost = l.get("unit_cost")
-        lines.append(policy.Line(
-            product_id=int(l["product_id"]), name=str(l.get("name") or "")[:200],
-            qty=max(1, min(int(l.get("qty") or 1), 999)),
+    def line(l: dict, qty: int) -> policy.Line:
+        cost, image = l.get("unit_cost"), str(l.get("image") or "")[:500]
+        return policy.Line(
+            product_id=int(l["product_id"]), name=str(l.get("name") or "")[:200], qty=qty,
             unit_price=_dec(l.get("unit_price"), "unit_price"),
             unit_cost=_dec(cost, "unit_cost") if cost not in (None, "") else None,
-            sku=(str(l["sku"])[:64] if l.get("sku") else None)))
+            sku=(str(l["sku"])[:64] if l.get("sku") else None),
+            image=image if image.startswith(("https://", "http://")) else None)
+
+    lines = [line(l, max(1, min(int(l.get("qty") or 1), 999))) for l in (d.get("lines") or [])[:50]]
+    fsm = d.get("free_shipping_min")
     return policy.Cart(lines=lines, shipping=_dec(d.get("shipping") or 0, "shipping", hi=Decimal("1000")),
-                       currency=m["currency"])
+                       currency=m["currency"],
+                       free_shipping_min=_dec(fsm, "free_shipping_min") if fsm not in (None, "", 0, "0") else None,
+                       addons=[line(l, 1) for l in (d.get("addons") or [])[:20]])
 
 
 def cart_to_store(cart: policy.Cart) -> dict:
@@ -136,6 +140,8 @@ def offer_view(nid: str, offer: policy.Offer, d: agent.Decision, cart: policy.Ca
         "disclosure": "Personalized offer, chosen by an automated assistant based on your cart and this visit."
                       if offer.lever in MONEY_LEVERS else None,
     }
+    if offer.addon:
+        out["addon"] = {k: offer.addon[k] for k in ("product_id", "name", "price", "image")}
     if policy.money(30) <= offer.final_total <= policy.money(1500):
         out["installment"] = f"{policy.money(offer.final_total / 4):.2f}"
     return out
@@ -226,7 +232,12 @@ def open_nudge(m: dict, body: dict) -> dict:
                                     cart.currency)
     levers = policy.available_levers(cart, g, blocked, market)
     decision, meta = agent.decide(cart, levers, signals, history, body.get("locale"))
-    offer = policy.clamp(decision.lever, decision.discount_pct, cart, g, levers)
+    offer = policy.clamp(decision.lever, decision.discount_pct, cart, g, levers, decision.addon_product_id)
+    if offer.addon:
+        # The add-on becomes a line of the order the shopper pays; the nudge keeps the original total.
+        extra = next(a for a in cart.addons if a.product_id == offer.addon["product_id"])
+        db.update("nudges", nid, cart=cart_to_store(policy.Cart(lines=cart.lines + [extra], shipping=cart.shipping,
+                                                                 currency=cart.currency)))
 
     rationale = decision.rationale + (f" [guardrail: {'; '.join(offer.notes)}]" if offer.notes else "")
     if blocked:
@@ -248,7 +259,7 @@ def current_offer(n: dict) -> tuple[policy.Cart, policy.Offer]:
     cart = cart_from_store(n["cart"])
     offer = policy.Offer(lever=n["lever"], item_total=cart.item_total, shipping=cart.shipping,
                          discount_amount=policy.money(n["discount_amount"] or 0))
-    if n["lever"] == "free_shipping":
+    if n["lever"] in ("free_shipping", "top_up"):
         offer.shipping = Decimal("0")
     return cart, offer
 
@@ -398,7 +409,7 @@ def summary(m: dict) -> dict:
         if r["state"] == "paid":
             daily[day]["saved_orders"] += 1
             daily[day]["saved_revenue"] = round(daily[day]["saved_revenue"] + (r["paid_total"] or 0), 2)
-            daily[day]["conceded"] = round(daily[day]["conceded"] + (r["cart_total"] or 0) - (r["paid_total"] or 0), 2)
+            daily[day]["conceded"] = round(daily[day]["conceded"] + max(0, (r["cart_total"] or 0) - (r["paid_total"] or 0)), 2)
     return {
         "merchant": {"name": m["name"], "currency": m["currency"], "fee_pct": m["fee_pct"],
                      "control_pct": m["control_pct"], "min_margin_pct": m["min_margin_pct"],
@@ -407,7 +418,7 @@ def summary(m: dict) -> dict:
         "saved_orders": len(paid),
         "saved_revenue": round(sum(r["paid_total"] or 0 for r in paid), 2),
         # Everything conceded on closed sales: item discounts plus waived shipping.
-        "discount_given": round(sum((r["cart_total"] or 0) - (r["paid_total"] or 0) for r in paid), 2),
+        "discount_given": round(sum(max(0, (r["cart_total"] or 0) - (r["paid_total"] or 0)) for r in paid), 2),
         "fees_total": round(sum(r["fee_amount"] or 0 for r in paid), 2),
         "fees_uninvoiced": round(sum(r["fee_amount"] or 0 for r in paid if not r["invoice_id"]), 2),
         "skipped": sum(1 for r in rows if r["state"] == "skipped"),

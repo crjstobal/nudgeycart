@@ -20,11 +20,13 @@ const NUDGEYCART_DEMO_PRODUCTS = [
     ['YETI Rambler 20 oz Tumbler', '38.00', '16.00', 'Stainless steel, dishwasher safe, MagSlider lid.', 'tumbler-20oz'],
     ['Bodum Chambord French Press 8 Cup', '45.00', '18.00', 'The classic French press, borosilicate glass and stainless steel.', 'french-press'],
     ['Moleskine Classic Notebook Large Ruled', '24.95', '9.00', 'Hard cover, 240 ruled pages, elastic closure.', 'notebook'],
+    ['Lodge Silicone Hot Handle Holder', '9.95', '3.20', 'Slips over a cast iron skillet handle, heat safe to 500 F.', 'handle-holder'],
+    ['Silicone Turner Set 2 Pack', '6.95', '2.10', 'Heat-safe turners that are gentle on seasoned cast iron.', 'spatulas'],
 ];
 
 /**
  * Copies a bundled product photo into the media library. No thumbnails are generated: resizing
- * eight images in a browser-hosted PHP (Playground) would slow the store's first boot.
+ * ten images in a browser-hosted PHP (Playground) would slow the store's first boot.
  */
 function nudgeycart_demo_image(string $slug, string $title): int
 {
@@ -75,6 +77,11 @@ function nudgeycart_seed_demo_store(): array
         update_option("woocommerce_flat_rate_{$instance}_settings", [
             'enabled' => 'yes', 'title' => 'Flat rate', 'tax_status' => 'none', 'cost' => '7.99',
         ]);
+        // The store's own rule the top-up lever works towards: free shipping from 49.
+        $free = $zone->add_shipping_method('free_shipping');
+        update_option("woocommerce_free_shipping_{$free}_settings", [
+            'title' => 'Free shipping', 'requires' => 'min_amount', 'min_amount' => '49', 'ignore_discounts' => 'no',
+        ]);
     }
     // Shoppers in the holdout group still need a normal way to pay.
     $cod = get_option('woocommerce_cod_settings', []);
@@ -99,6 +106,18 @@ function nudgeycart_seed_demo_store(): array
             }
             $p->save();
             $created++;
+        }
+    }
+    // A returns policy the shopper can open: reading it is one of the trust signals the agent uses.
+    if (!get_page_by_path('returns-policy')) {
+        wp_insert_post([
+            'post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Returns policy', 'post_name' => 'returns-policy',
+            'post_content' => '<!-- wp:paragraph --><p>Changed your mind? Send any unused item back within 30 days for a full refund. We email you a prepaid label, and the refund goes to your original payment method within 5 business days of the parcel arriving.</p><!-- /wp:paragraph -->'
+                . '<!-- wp:paragraph --><p>Arrived damaged? Tell us within 7 days and we replace it at no cost. Orders paid with PayPal are also covered by PayPal Buyer Protection.</p><!-- /wp:paragraph -->',
+        ]);
+        $sample = get_page_by_path('sample-page');
+        if ($sample) {
+            wp_delete_post($sample->ID, true);
         }
     }
     update_option('nudgeycart_test_mode', '1');

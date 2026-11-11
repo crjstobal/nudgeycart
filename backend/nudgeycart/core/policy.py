@@ -14,11 +14,13 @@ CENT = Decimal("0.01")
 # Levers ordered from cheapest to most expensive for the merchant. Pay Later and express
 # PayPal checkout are not levers: they belong in every checkout, so the offer dialog always
 # shows them instead of "rewarding" a shopper with them.
-LEVERS = ("reassurance", "free_shipping", "price_match", "discount", "none")
+# "top_up" is the one lever that earns instead of costing: an add-on that lifts the cart over the
+# store's free-shipping minimum, so the shopper gets free shipping by buying more.
+LEVERS = ("reassurance", "top_up", "free_shipping", "price_match", "discount", "none")
 
 REASON_TO_LEVER = {
     "comparison_shopping": "price_match",
-    "shipping_cost": "free_shipping",
+    "shipping_cost": "top_up",
     "price": "discount",
     "trust": "reassurance",
     "checkout_friction": "reassurance",
@@ -43,6 +45,7 @@ class Line:
     unit_price: Decimal
     unit_cost: Decimal | None = None
     sku: str | None = None
+    image: str | None = None
 
     @property
     def total(self) -> Decimal:
@@ -54,6 +57,10 @@ class Cart:
     lines: list[Line]
     shipping: Decimal
     currency: str
+    # The store's own free-shipping minimum, and catalogue products (not in the cart) that the
+    # agent may suggest to reach it.
+    free_shipping_min: Decimal | None = None
+    addons: list[Line] = field(default_factory=list)
 
     @property
     def item_total(self) -> Decimal:
@@ -102,6 +109,7 @@ class Offer:
     item_total: Decimal = Decimal("0")
     notes: list[str] = field(default_factory=list)
     matches: list[dict] = field(default_factory=list)
+    addon: dict | None = None
 
     @property
     def final_total(self) -> Decimal:
@@ -171,6 +179,35 @@ def price_match_quote(cart: Cart, market: list[MarketOffer], g: Guardrails) -> d
     return {"amount": money(needed), "matches": matches}
 
 
+TOP_UP_CANDIDATES = 4
+
+
+def top_up_quote(cart: Cart, g: Guardrails) -> list[dict]:
+    """Add-ons that lift the cart over the store's free-shipping minimum.
+
+    Shipping is then free under the store's own rule, so nothing is given away: the merchant
+    sells one more item. Each candidate must cover the gap on its own, cost no more than the
+    cart it joins, and keep the bigger order above the margin floor with shipping waived.
+    """
+    if not cart.free_shipping_min or cart.shipping <= 0 or cart.item_total >= cart.free_shipping_min:
+        return []
+    gap = cart.free_shipping_min - cart.item_total
+    in_cart = {l.product_id for l in cart.lines}
+    out = []
+    for a in sorted(cart.addons, key=lambda l: l.unit_price):
+        if a.product_id in in_cart or a.unit_cost is None or not gap <= a.unit_price <= cart.item_total:
+            continue
+        bigger = Cart(lines=cart.lines + [a], shipping=cart.shipping, currency=cart.currency)
+        if margin_headroom(bigger, g) < cart.shipping:
+            continue
+        out.append({"product_id": a.product_id, "name": a.name, "price": str(money(a.unit_price)),
+                    "new_total": str(bigger.item_total), "extra_to_pay": str(money(bigger.item_total - cart.total)),
+                    "image": a.image})
+        if len(out) == TOP_UP_CANDIDATES:
+            break
+    return out
+
+
 def available_levers(cart: Cart, g: Guardrails, discount_blocked: bool,
                      market: list[MarketOffer] | None = None) -> dict[str, dict]:
     """What the agent may offer, with what each one costs the merchant."""
@@ -184,6 +221,15 @@ def available_levers(cart: Cart, g: Guardrails, discount_blocked: bool,
     # The max discount policy is about item prices; waiving shipping only has to respect the margin.
     if cart.shipping > 0 and cart.shipping <= margin:
         levers["free_shipping"] = {"merchant_cost": str(cart.shipping), "what": "shipping waived"}
+    candidates = [] if discount_blocked else top_up_quote(cart, g)
+    if candidates:
+        levers["top_up"] = {
+            "merchant_cost": "0 (shipping is free above the store minimum anyway; the order grows)",
+            "what": f"suggest ONE add-on that lifts the cart over the free-shipping minimum of "
+                    f"{money(cart.free_shipping_min)} {cart.currency}, so shipping ({cart.shipping}) becomes free",
+            "free_shipping_min": str(money(cart.free_shipping_min)),
+            "candidates": candidates,
+        }
     quote = None if discount_blocked else price_match_quote(cart, market or [], g)
     if quote:
         levers["price_match"] = {
@@ -204,13 +250,23 @@ def available_levers(cart: Cart, g: Guardrails, discount_blocked: bool,
     return levers
 
 
-def clamp(lever: str, discount_pct: float, cart: Cart, g: Guardrails, levers: dict) -> Offer:
+def clamp(lever: str, discount_pct: float, cart: Cart, g: Guardrails, levers: dict,
+          addon_product_id: int | None = None) -> Offer:
     """Turn the model's proposal into an offer the merchant has pre-approved."""
     offer = Offer(lever=lever, shipping=cart.shipping, item_total=cart.item_total)
     if lever not in levers:
         offer.notes.append(f"lever {lever!r} not available, fell back to reassurance")
         offer.lever = lever = "reassurance"
-    if lever == "free_shipping":
+    if lever == "top_up":
+        candidates = levers["top_up"]["candidates"]
+        pick = next((c for c in candidates if c["product_id"] == addon_product_id), None)
+        if pick is None:
+            pick = candidates[0]
+            offer.notes.append("add-on not in the approved list, used the cheapest candidate")
+        offer.addon = pick
+        offer.item_total = money(cart.item_total + Decimal(pick["price"]))
+        offer.shipping = Decimal("0")
+    elif lever == "free_shipping":
         offer.shipping = Decimal("0")
     elif lever == "price_match":
         offer.discount_amount = Decimal(levers["price_match"]["merchant_cost"])
@@ -232,6 +288,8 @@ def fallback_lever(reason_category: str, levers: dict) -> str:
     preferred = REASON_TO_LEVER.get(reason_category, "none")
     if preferred in levers:
         return preferred
+    if preferred == "top_up" and "free_shipping" in levers:
+        return "free_shipping"
     if preferred == "price_match" and "discount" in levers:
         return "discount"
     return "reassurance" if preferred != "none" else "none"

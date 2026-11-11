@@ -122,3 +122,31 @@ def test_free_shipping_respects_margin_not_the_discount_cap():
     assert "free_shipping" in p.available_levers(c, G, discount_blocked=False)
     thin = cart(("34", "22", 1))  # headroom 2.57: cannot waive 7.99
     assert "free_shipping" not in p.available_levers(thin, G, discount_blocked=False)
+
+
+def _under_min(addons):
+    c = p.Cart(lines=[p.Line(1, "Skillet", 1, p.money("39.95"), p.money("14.00"))], shipping=p.money("7.99"),
+               currency="USD", free_shipping_min=p.money("49"), addons=addons)
+    return c
+
+
+def test_top_up_offers_addons_that_reach_the_free_shipping_minimum():
+    addons = [p.Line(2, "Scrapers", 1, p.money("6.95"), p.money("2.10")),      # does not cover the 9.05 gap
+              p.Line(3, "Handle holder", 1, p.money("9.95"), p.money("3.20")),
+              p.Line(4, "No cost known", 1, p.money("12.00"), None),
+              p.Line(5, "Kettle", 1, p.money("175.00"), p.money("98.00"))]      # dearer than the cart
+    c = _under_min(addons)
+    levers = p.available_levers(c, G, discount_blocked=False)
+    assert [x["product_id"] for x in levers["top_up"]["candidates"]] == [3]
+    offer = p.clamp("top_up", 0, c, G, levers, addon_product_id=3)
+    assert offer.shipping == 0 and offer.item_total == p.money("49.90") and offer.final_total == p.money("49.90")
+    # An add-on the model made up falls back to an approved candidate.
+    assert p.clamp("top_up", 0, c, G, levers, addon_product_id=999).addon["product_id"] == 3
+
+
+def test_top_up_needs_a_gap_and_is_blocked_with_other_money_levers():
+    addons = [p.Line(3, "Handle holder", 1, p.money("9.95"), p.money("3.20"))]
+    assert "top_up" not in p.available_levers(_under_min(addons), G, discount_blocked=True)
+    over = _under_min(addons); over.lines[0].qty = 2
+    assert "top_up" not in p.available_levers(over, G, discount_blocked=False)
+    assert p.fallback_lever("shipping_cost", {"free_shipping": {}}) == "free_shipping"

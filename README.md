@@ -10,7 +10,8 @@ switched tabs, read the returns policy...), lets Claude infer the most likely re
 | What the agent reads | What it offers | Cost to the merchant |
 |---|---|---|
 | Comparing prices elsewhere | **Price match** against the real, in-stock competitor price found by [Channel3](https://trychannel3.com) | the gap, only if the margin floor holds |
-| Shipping cost shock | **Free shipping** | the shipping fee |
+| Shipping cost shock, cart under the free-shipping minimum | **Cart top-up**: one matching add-on that reaches the minimum | nothing: the order grows |
+| Shipping cost shock, otherwise | **Free shipping** | the shipping fee |
 | Price sensitive | **Discount**, the smallest that plausibly closes | capped by policy and margin |
 | Trust doubts, checkout friction | **Reassurance**: PayPal Buyer Protection, pay in one tap, Pay in 4 | nothing |
 | Just browsing, unclear | **Nothing.** Not interrupting is a valid decision | nothing |

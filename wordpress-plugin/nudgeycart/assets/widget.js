@@ -222,7 +222,9 @@
     // (tab switches, product revisits) must not leak into "just browsing" and change the decision.
     var base = extra && extra.scripted ? { page: cfg.page, device: innerWidth < 768 ? "mobile" : "desktop" } : snapshot();
     var signals = Object.assign(base, (extra && extra.signals) || {});
-    showThinking();
+    state.sent = signals;
+    renderPanel();
+    showThinking(describe(signals));
     api("nudge", {
       visitor_id: visitorId, session_id: sessionId, trigger: trigger, signals: signals,
       locale: navigator.language, force: extra ? "treatment" : null
@@ -358,6 +360,18 @@
     ".ndg-p{color:#475467;margin:0 0 12px}" +
     ".ndg-match{display:flex;align-items:center;gap:10px;background:#f6faf7;border:1px solid #d7eedf;border-radius:12px;padding:10px 12px;margin:0 0 10px;font-size:14px}" +
     ".ndg-match b{color:#067647}" +
+    ".ndg-addon{display:flex;align-items:center;gap:12px;background:#f5f8ff;border:1px solid #d6e4ff;border-radius:14px;padding:8px 12px;margin:0 0 10px}" +
+    ".ndg-addon img{width:54px;height:54px;border-radius:10px;object-fit:cover;flex:none}" +
+    ".ndg-addon div{flex:1;min-width:0}.ndg-addon small{display:block;font-size:11px;color:#0057b8;font-weight:650;text-transform:uppercase;letter-spacing:.04em}" +
+    ".ndg-addon b{display:block;font-size:14px;line-height:1.25}.ndg-addon span{font-weight:700;white-space:nowrap}" +
+    ".ndg-why{display:none;position:fixed;left:16px;top:50%;transform:translateY(-50%);width:300px;background:#101418;color:#e8eaed;border-radius:16px;" +
+    "padding:14px 16px;font:13px/1.45 -apple-system,sans-serif;box-shadow:0 12px 36px rgba(0,0,0,.35);animation:ndg-fade .3s ease-out}" +
+    "@media(min-width:1100px){.ndg-why{display:block}}" +
+    ".ndg-why small{display:block;color:#98a2b3;text-transform:uppercase;letter-spacing:.06em;font-size:10.5px;font-weight:650;margin-top:8px}" +
+    ".ndg-why small:first-child{margin-top:0}.ndg-why b{display:block;font-size:15px;color:#fff}" +
+    ".ndg-why ul{margin:4px 0 0;padding:0;list-style:none}.ndg-why li{padding-left:14px;position:relative;color:#cfd6dd}" +
+    ".ndg-why li:before{content:'';position:absolute;left:2px;top:8px;width:6px;height:6px;border-radius:50%;background:#ffc439}" +
+    ".ndg-why p{margin:4px 0 6px;color:#aab4be;font-size:12px}.ndg-why em{font-style:normal;color:#6ea8fe;font-size:11px}" +
     ".ndg-offer{border:1px solid #e4e7ec;border-radius:14px;padding:12px 14px;margin:6px 0 10px}" +
     ".ndg-line{display:flex;justify-content:space-between;font-size:14px;color:#475467;margin:2px 0}" +
     ".ndg-save{color:#067647;font-weight:600}" +
@@ -385,7 +399,8 @@
     ".ndg-panel button.ndg-sc:hover{border-color:#6ea8fe}" +
     ".ndg-panel button.ndg-sc small{display:block;color:#98a2b3}" +
     ".ndg-panel .ndg-live{margin-top:8px;border-top:1px solid #2b3540;padding-top:8px;color:#98a2b3}" +
-    ".ndg-panel .ndg-live code{color:#9ad1ff;font:11px ui-monospace,Menlo,monospace}" +
+    ".ndg-panel .ndg-live ul{margin:4px 0 0;padding:0;list-style:none}.ndg-panel .ndg-live li{color:#9ad1ff;padding-left:12px;position:relative}" +
+    ".ndg-panel .ndg-live li:before{content:'';position:absolute;left:1px;top:7px;width:5px;height:5px;border-radius:50%;background:#9ad1ff}" +
     ".ndg-panel.min .ndg-pb{display:none}";
 
   function ensureStyle() {
@@ -396,13 +411,14 @@
     document.head.appendChild(st);
   }
 
-  function showThinking() {
+  function showThinking(read) {
     if (!demoPanel) return; // shoppers only see the result, never a spinner
     ensureStyle();
     hideThinking();
     thinkingEl = document.createElement("div");
     thinkingEl.className = "ndg-thinking";
-    thinkingEl.innerHTML = '<span class="ndg-dots"><span></span><span></span><span></span></span> NudgeyCart is reading the signals';
+    thinkingEl.innerHTML = '<span class="ndg-dots"><span></span><span></span><span></span></span> ' +
+      (read && read.length ? "Reading: " + esc(read.slice(0, 3).join(" · ")) : "NudgeyCart is reading the signals");
     document.body.appendChild(thinkingEl);
   }
   function hideThinking() { if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; } }
@@ -431,8 +447,29 @@
     }
   }
 
+  // Behaviour signals in plain words, for the demo panel and the "what the agent read" card.
+  function describe(sig) {
+    var n = function (k) { return Number(sig[k] || 0); }, out = [];
+    var times = function (v) { return v > 1 ? " " + Math.round(v) + "×" : ""; };
+    if (n("copied_product_name")) out.push("copied the product name");
+    if (n("away_s") >= 3) out.push(Math.round(n("away_s")) + " s in another tab");
+    else if (n("tab_switches")) out.push("switched tabs" + times(n("tab_switches")));
+    if (n("shipping_dwell_s") >= 2) out.push(Math.round(n("shipping_dwell_s")) + " s on the shipping line");
+    if (n("postcode_edits")) out.push("re-entered the postcode" + times(n("postcode_edits")));
+    if (n("coupon_focus")) out.push("opened the coupon box" + times(n("coupon_focus")));
+    if (n("qty_decreases")) out.push("lowered the quantity");
+    if (n("item_removals")) out.push("removed an item");
+    if (n("price_dwell_s") >= 2) out.push(Math.round(n("price_dwell_s")) + " s on the price");
+    if (n("policy_views")) out.push("opened the returns policy" + times(n("policy_views")));
+    if (n("reviews_views")) out.push("read the reviews");
+    if (n("product_revisits")) out.push("came back to the product" + times(n("product_revisits")));
+    if (!out.length && n("seconds_on_site") && n("seconds_on_site") < 20) out.push(Math.round(n("seconds_on_site")) + " s visit, no other signal");
+    return out;
+  }
+
+  function cap(t) { t = String(t || ""); return t.charAt(0).toUpperCase() + t.slice(1); }
   var LEVER = {
-    price_match: "Price matched", free_shipping: "Free shipping", discount: "Special offer",
+    price_match: "Price matched", top_up: "Free shipping unlocked", free_shipping: "Free shipping", discount: "Special offer",
     reassurance: "Protected by PayPal"
   };
 
@@ -440,7 +477,10 @@
     hideThinking();
     ensureStyle();
     var cur = o.currency, changed = o.final_total !== o.original_total;
-    var match = (o.matches || [])[0];
+    var match = (o.matches || [])[0], addon = o.addon;
+    if (addon) changed = false; // the total goes up: it is a bigger order, not a discount
+    var shipWas = Number(o.original_total) - (Number(o.item_total) - (addon ? Number(addon.price) : 0)) + (addon ? 0 : 0);
+    if (!addon) shipWas = Number(o.shipping) === 0 && o.lever === "free_shipping" ? Number(o.original_total) - Number(o.item_total) : 0;
     root = document.createElement("div");
     root.className = "ndg-overlay";
     root.setAttribute("role", "dialog");
@@ -453,9 +493,12 @@
       '<p class="ndg-p">' + esc(o.message) + "</p>" +
       (match ? '<div class="ndg-match">✓ <span>' + esc(match.competitor) + " lists it at <b>" +
         money(match.competitor_price, cur) + "</b>. Same price here.</span></div>" : "") +
+      (addon ? '<div class="ndg-addon">' + (addon.image ? '<img src="' + esc(addon.image) + '" alt="">' : "") +
+        "<div><small>Added to your order</small><b>" + esc(addon.name) + "</b></div><span>+" + money(addon.price, cur) + "</span></div>" : "") +
       '<div class="ndg-offer">' +
       '<div class="ndg-line"><span>Items</span><span>' + money(o.item_total, cur) + "</span></div>" +
-      '<div class="ndg-line"><span>Shipping</span><span' + (Number(o.shipping) === 0 ? ' class="ndg-save">Free' : ">" +
+      '<div class="ndg-line"><span>Shipping</span><span' + (Number(o.shipping) === 0 ? ' class="ndg-save">' +
+        (shipWas > 0 ? '<span class="ndg-strike">' + money(shipWas, cur) + "</span>" : "") + 'Free' : ">" +
         money(o.shipping, cur)) + "</span></div>" +
       (Number(o.discount) > 0 ? '<div class="ndg-line ndg-save"><span>' + (o.lever === "price_match" ? "Price match" : "Your offer") +
         "</span><span>−" + money(o.discount, cur) + "</span></div>" : "") +
@@ -466,6 +509,17 @@
       (o.disclosure ? '<div class="ndg-disclosure">' + esc(o.disclosure) + "</div>" : "") +
       '<button class="ndg-link ndg-no">No thanks, keep shopping</button></div>';
     document.body.appendChild(root);
+    if (demoPanel && o.reason) {
+      // Demo stores only: show what the agent read and why it chose this, next to the offer.
+      var why = document.createElement("div");
+      why.className = "ndg-why";
+      why.innerHTML = "<small>What the agent read</small><b>" + esc(cap(REASON[o.reason] || o.reason)) + "</b>" +
+        "<ul>" + (o.evidence || []).slice(0, 3).map(function (e) { return "<li>" + esc(e) + "</li>"; }).join("") + "</ul>" +
+        "<small>Its choice</small><b>" + esc(LEVER[o.lever] || o.lever) + "</b>" +
+        "<p>" + esc(String(o.rationale || "").replace(/\s*\[guardrail:.*$/, "")) + "</p>" +
+        "<em>" + esc(o.model || "") + (o.ms ? " · " + (o.ms / 1000).toFixed(1) + " s" : "") + "</em>";
+      root.appendChild(why);
+    }
     statusEl = root.querySelector(".ndg-status");
     root.querySelector(".ndg-x").onclick = close;
     root.querySelector(".ndg-no").onclick = close;
@@ -489,8 +543,8 @@
   var SCENARIOS = [
     { id: "compare", label: "Comparing prices", hint: "copied the product name, 40s in another tab",
       signals: { copied_product_name: 1, tab_switches: 2, away_s: 41, last_away_s: 41, returned_after_away: 1 }, trigger: "tab_return" },
-    { id: "shipping", label: "Shipping shock", hint: "lingered on shipping, re-entered postcode",
-      signals: { shipping_dwell_s: 7.5, shipping_views: 3, postcode_edits: 1 }, trigger: "exit_intent" },
+    { id: "shipping", label: "Shipping shock", hint: "18s on the shipping line, re-entered postcode",
+      signals: { shipping_dwell_s: 18, shipping_views: 3, postcode_edits: 2 }, trigger: "exit_intent" },
     { id: "coupon", label: "Coupon hunter", hint: "focused the coupon box twice, lowered quantity",
       signals: { coupon_focus: 2, qty_decreases: 1, price_dwell_s: 4 }, trigger: "exit_intent" },
     { id: "trust", label: "Trust doubts", hint: "read the returns policy and reviews",
@@ -523,15 +577,15 @@
         });
       });
     }
-    var live = Object.keys(S).filter(function (k) { return k !== "seconds_before" && S[k]; })
-      .map(function (k) { return "<code>" + esc(k) + "=" + esc(S[k]) + "</code>"; }).join(" ");
+    var seen = describe(state.sent || S);
+    var live = seen.map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("");
     panel.innerHTML = "<header>NudgeyCart demo <span>" + (cartItems ? cartItems + " in cart" : "cart empty") + "</span></header>" +
       '<div class="ndg-pb"><div style="margin-bottom:8px;color:#98a2b3">Simulate why a shopper is leaving:</div>' +
       SCENARIOS.map(function (s) {
         return '<button class="ndg-sc" data-id="' + s.id + '">' + esc(s.label) + "<small>" + esc(s.hint) + "</small></button>";
       }).join("") +
       '<button class="ndg-sc" data-id="live">Use my real behaviour<small>copy the product name, switch tabs, open the coupon box…</small></button>' +
-      '<div class="ndg-live">Signals this visit: ' + (live || "none yet") + "</div></div>";
+      '<div class="ndg-live">What NudgeyCart sees: ' + (live ? "<ul>" + live + "</ul>" : "nothing yet") + "</div></div>";
   }
   if (document.body) renderPanel(); else document.addEventListener("DOMContentLoaded", renderPanel);
 

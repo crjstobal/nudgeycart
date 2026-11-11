@@ -69,11 +69,65 @@ function nudgeycart_build_cart(): array
             'unit_cost' => $cost !== '' ? wc_format_decimal($cost, 2) : null,
         ];
     }
-    return [
+    $cart = [
         'currency' => get_woocommerce_currency(),
         'shipping' => wc_format_decimal(WC()->cart->get_shipping_total(), 2),
         'lines' => $lines,
     ];
+    // Under the store's free-shipping minimum: tell the agent which products could close the gap.
+    $min = nudgeycart_free_shipping_min();
+    $subtotal = (float) WC()->cart->get_subtotal();
+    if ($min > 0 && $subtotal < $min && (float) $cart['shipping'] > 0) {
+        $cart['free_shipping_min'] = wc_format_decimal($min, 2);
+        $cart['addons'] = nudgeycart_addon_candidates($min - $subtotal, $subtotal, array_column($lines, 'product_id'));
+    }
+    return $cart;
+}
+
+/** The store's own free-shipping minimum: the lowest "minimum order amount" of its free shipping methods. */
+function nudgeycart_free_shipping_min(): float
+{
+    $forced = get_option('nudgeycart_free_shipping_min', '');
+    if ($forced !== '') {
+        return (float) $forced;
+    }
+    $min = 0.0;
+    $zones = array_map(fn($z) => new WC_Shipping_Zone($z['id']), WC_Shipping_Zones::get_zones());
+    $zones[] = new WC_Shipping_Zone(0);
+    foreach ($zones as $zone) {
+        foreach ($zone->get_shipping_methods(true) as $method) {
+            if ($method->id === 'free_shipping' && in_array($method->get_option('requires'), ['min_amount', 'either'], true)) {
+                $amount = (float) $method->get_option('min_amount');
+                $min = ($min === 0.0 || $amount < $min) ? $amount : $min;
+            }
+        }
+    }
+    return $min;
+}
+
+/**
+ * Catalogue products that would lift the cart over the free-shipping minimum on their own:
+ * in stock, with a known unit cost, not in the cart, and not dearer than the cart itself.
+ */
+function nudgeycart_addon_candidates(float $gap, float $subtotal, array $in_cart): array
+{
+    $out = [];
+    $products = wc_get_products(['status' => 'publish', 'type' => 'simple', 'stock_status' => 'instock',
+        'limit' => 60, 'orderby' => 'date', 'order' => 'DESC', 'exclude' => array_map('intval', $in_cart)]);
+    foreach ($products as $p) {
+        $price = (float) $p->get_price();
+        $cost = $p->get_meta(NUDGEYCART_COST_META);
+        if ($cost === '' || $price < $gap || $price > $subtotal || !$p->is_purchasable()) {
+            continue;
+        }
+        $out[] = [
+            'product_id' => $p->get_id(), 'name' => $p->get_name(), 'sku' => $p->get_sku() ?: null,
+            'unit_price' => wc_format_decimal($price, 2), 'unit_cost' => wc_format_decimal($cost, 2),
+            'image' => $p->get_image_id() ? wp_get_attachment_url($p->get_image_id()) : null,
+        ];
+    }
+    usort($out, fn($a, $b) => (float) $a['unit_price'] <=> (float) $b['unit_price']);
+    return array_slice($out, 0, 8);
 }
 
 /* ---------- paid order from a NudgeyCart capture ---------- */

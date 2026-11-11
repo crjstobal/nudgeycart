@@ -28,6 +28,10 @@ SCENARIOS = [
      "Lingered on the shipping cost and re-entered the postcode: shipping is the blocker. Waiving it "
      "costs less than any discount that would compensate.",
      {"shipping_dwell_s": 6.2, "postcode_edits": 1}),
+    ("shipping_cost", "top_up", ["8s on the shipping line", "checked the free-shipping minimum"],
+     "Stalled on the shipping cost with a cart just under the free-shipping minimum. Suggested one "
+     "matching add-on that lifts the cart over it: the shopper gets free shipping and the order grows.",
+     {"shipping_dwell_s": 8.4, "shipping_views": 2}),
     ("price", "discount", ["focused the coupon field twice", "reduced quantity"],
      "Hunted for a coupon and reduced the quantity: price sensitive. Offered the smallest discount "
      "that plausibly closes, well inside the cap.",
@@ -46,9 +50,9 @@ SCENARIOS = [
      "No clear reason in the signals (confidence 0.3). Not interrupting is cheaper than a wrong offer.",
      {"tab_switches": 1, "away_s": 4}),
 ]
-SCENARIO_WEIGHTS = [16, 14, 18, 12, 8, 18, 14]
+SCENARIO_WEIGHTS = [16, 8, 9, 18, 12, 8, 18, 14]
 # Probability that an offered nudge ends up paid, per lever.
-CLOSE_RATE = {"price_match": 0.16, "free_shipping": 0.14, "discount": 0.12, "reassurance": 0.07}
+CLOSE_RATE = {"price_match": 0.16, "top_up": 0.15, "free_shipping": 0.14, "discount": 0.12, "reassurance": 0.07}
 HOLDOUT_RATE = 0.08
 COMPETITORS = ["amazon.com", "target.com", "walmart.com", "bestbuy.com", "rei.com"]
 TRIGGERS = ["exit_intent", "exit_intent", "exit_intent", "tab_return", "idle", "scroll_up"]
@@ -124,6 +128,10 @@ def seed_history(m: dict, catalog: list[dict], seed: int | None = None) -> int:
                 offer.discount_amount = gap if gap > 0 else Decimal("0")
             elif lever == "discount":
                 offer.discount_amount = policy.money(min(headroom, cart.item_total * Decimal("0.08")))
+            elif lever == "top_up":
+                # An add-on worth 10 to 20 joined the order and shipping went free.
+                offer.item_total = policy.money(cart.item_total + Decimal(rnd.choice(["9.95", "12.00", "14.50", "19.00"])))
+                offer.shipping = Decimal("0")
             elif lever == "free_shipping":
                 offer.shipping = Decimal("0")
             if lever in ("price_match", "discount") and offer.discount_amount <= 0:
