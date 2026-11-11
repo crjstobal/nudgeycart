@@ -33,9 +33,22 @@ disappears when you close the tab.
 1. Add a product to the cart and open the cart.
 2. Use the **NudgeyCart demo** panel to simulate why a shopper leaves (or behave like one: copy
    the product name, switch tabs, open the coupon box, then move the mouse to the tabs).
-3. Pay the offer with the PayPal sandbox **personal** account.
+3. Pay the offer with the PayPal sandbox test buyer below (click **Pay with PayPal** and log in).
 4. In wp-admin (admin / password): **WooCommerce > NudgeyCart** for the dashboard, and
    **WooCommerce > Orders** for the saved sale.
+
+### Test account
+
+A PayPal **sandbox** buyer for judges and testers. It only exists inside PayPal's test environment
+and holds play money:
+
+| | |
+|---|---|
+| Email | `sb-boqne53858588@personal.example.com` |
+| Password | `k297?Du9` |
+
+The same login opens the success-fee invoice that the dashboard's **Invoice fees via PayPal**
+button sends. wp-admin of the demo store: `admin` / `password`.
 
 ## How it works
 
