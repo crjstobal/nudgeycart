@@ -20,12 +20,15 @@ order lands in WooCommerce as paid. Merchants pay nothing up front: NudgeyCart c
 fee on the sales it closed, billed through **PayPal Invoicing**, and proves its value against a
 built-in holdout group.
 
-> Status: in development for the PayPal AI Hackathon (2026).
+> Built for the PayPal AI Hackathon (2026). Everything runs against the PayPal sandbox: no real money moves.
 
 ## Try it
 
-**Live demo:** one click boots a WooCommerce store in your browser with WordPress Playground,
-NudgeyCart installed and 30 days of illustrative history: `https://<api-host>/demo`.
+**Live demo: https://nudgeycart-api.onrender.com/demo**
+
+One click boots a WooCommerce store in your browser with WordPress Playground, NudgeyCart
+installed and 30 days of illustrative history. Nothing to install; the store is yours alone and
+disappears when you close the tab.
 
 1. Add a product to the cart and open the cart.
 2. Use the **NudgeyCart demo** panel to simulate why a shopper leaves (or behave like one: copy
