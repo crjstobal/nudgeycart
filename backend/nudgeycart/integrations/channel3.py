@@ -24,12 +24,25 @@ MIN_TITLE_OVERLAP = 0.6
 
 
 def _words(s: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) > 1}
+    # Decimals stay whole: "10.25" must not match a "10.5 inch" listing through a shared "10".
+    return {w for w in re.findall(r"\d+(?:\.\d+)?|[a-z]+", s.lower()) if len(w) > 1 or w.isdigit()}
 
 
 def _overlap(ours: str, theirs: str) -> float:
     a = _words(ours)
     return len(a & _words(theirs)) / len(a) if a else 0.0
+
+
+def _same_product(ours: str, theirs: str) -> bool:
+    """Conservative on purpose: a wrong match gives money away against a different product.
+
+    The listing must carry our brand (the first word of the name), every size or model number
+    in our name, and most of the remaining words.
+    """
+    a, b = _words(ours), _words(theirs)
+    first = re.findall(r"[a-z]+", ours.lower())[:1]
+    numbers = {w for w in a if w[0].isdigit()}
+    return bool(first) and first[0] in b and numbers <= b and _overlap(ours, theirs) >= MIN_TITLE_OVERLAP
 
 
 def _price(offer: dict) -> Decimal | None:
@@ -47,7 +60,7 @@ def search(name: str, currency: str, exclude_domain: str | None = None) -> list[
     r.raise_for_status()
     out = []
     for prod in r.json().get("products", []):
-        if _overlap(name, prod.get("title", "")) < MIN_TITLE_OVERLAP:
+        if not _same_product(name, prod.get("title", "")):
             continue
         for o in prod.get("offers", []):
             price = _price(o)

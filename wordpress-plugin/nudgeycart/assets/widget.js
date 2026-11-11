@@ -218,7 +218,10 @@
     if (state.busy || cfg.page === "order_received") return;
     if (state.done && !extra) return;
     state.busy = true;
-    var signals = Object.assign(snapshot(), (extra && extra.signals) || {});
+    // A scripted demo scenario stands on its own: whatever the visitor really did in this session
+    // (tab switches, product revisits) must not leak into "just browsing" and change the decision.
+    var base = extra && extra.scripted ? { page: cfg.page, device: innerWidth < 768 ? "mobile" : "desktop" } : snapshot();
+    var signals = Object.assign(base, (extra && extra.signals) || {});
     showThinking();
     api("nudge", {
       visitor_id: visitorId, session_id: sessionId, trigger: trigger, signals: signals,
@@ -516,7 +519,7 @@
           if (!cartItems) { toast("<b>Add something to the cart first</b>NudgeyCart only steps in when there is a sale to save."); return; }
           if (b.getAttribute("data-id") === "live") { fire("manual", { signals: {} }); return; }
           var sc = SCENARIOS.filter(function (s) { return s.id === b.getAttribute("data-id"); })[0];
-          fire(sc.trigger, { signals: sc.signals });
+          fire(sc.trigger, { signals: sc.signals, scripted: true });
         });
       });
     }

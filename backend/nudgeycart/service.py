@@ -216,10 +216,12 @@ def open_nudge(m: dict, body: dict) -> dict:
     history = visitor_history(m, visitor_id, iph, exclude=nid)
     blocked = (history["previous_money_offers_30d"] > 0
                or history["money_offers_same_ip_30d"] >= IP_DISCOUNT_LIMIT)
-    # Demo scenarios (test mode, forced) replay many exits from one browser: keep every lever open.
-    if blocked and force:
+    # Demo scenarios (test mode, forced) replay many exits from one browser. Each one is judged as a
+    # first-time visitor: otherwise the agent, rightly, grows wary of a shopper nudged ten times.
+    if force:
         blocked = False
-        history["note"] = "test mode demo scenario: anti-abuse cooldown not applied"
+        history = {k: 0 for k in history}
+        history["note"] = "test mode demo scenario: judged as a first-time visitor"
     market = channel3.cached_offers([{"product_id": l.product_id, "name": l.name} for l in cart.lines],
                                     cart.currency)
     levers = policy.available_levers(cart, g, blocked, market)

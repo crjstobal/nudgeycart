@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
 
 /** name, price, unit cost, short description, image (assets/products/<image>.jpg) */
 const NUDGEYCART_DEMO_PRODUCTS = [
-    ['Lodge 10.25 Inch Cast Iron Skillet', '34.00', '14.00', 'Pre-seasoned cast iron that goes from stovetop to oven to campfire.', 'skillet'],
+    ['Lodge 10.25 Inch Cast Iron Skillet', '39.95', '14.00', 'Pre-seasoned cast iron that goes from stovetop to oven to campfire.', 'skillet'],
     ['Hydro Flask 32 oz Wide Mouth Water Bottle', '49.95', '22.00', 'Double-wall vacuum insulation: cold for 24 hours, hot for 12.', 'water-bottle'],
     ['Stanley Quencher H2.0 FlowState Tumbler 40 oz', '49.00', '21.00', 'Fits most cup holders, with a handle and a three-position lid.', 'tumbler-40oz'],
     ['Ember Mug 2 10 oz', '149.95', '82.00', 'Keeps your coffee at the exact temperature you choose.', 'smart-mug'],
