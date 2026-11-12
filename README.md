@@ -82,8 +82,25 @@ Design rules:
   offers carry a personalised-pricing disclosure (NY Algorithmic Pricing Disclosure Act, EU Omnibus).
 - **Anti-abuse.** A visitor (or IP) who already got a money offer in the last 30 days only gets
   free levers, so faking an exit does not farm discounts.
-- **Fast enough for an exit.** Claude Haiku 5.5 decides in about 2 to 3 seconds; competitor prices
+- **Fast enough for an exit.** Claude Haiku 5.5 decides in a few seconds; competitor prices
   are looked up when the item lands in the cart, not when the shopper leaves.
+
+## How PayPal, AI and the sponsor tools are used
+
+| Tool | Where | What it does here |
+|---|---|---|
+| **PayPal Orders v2** + JavaScript SDK | `backend/nudgeycart/integrations/paypal.py`, `assets/widget.js` | The offer dialog renders the PayPal, Pay Later, Venmo and card buttons. The order is created server side with the agent's price breakdown and captured server side; the plugin then creates the paid WooCommerce order. |
+| **PayPal Pay Later** | `assets/widget.js` | Pay Later button and "Pay in 4" messaging inside every offer. |
+| **PayPal Invoicing v2** | `backend/nudgeycart/integrations/paypal.py`, `service.py` | The 5% success fee on closed sales is sent to the merchant as a PayPal invoice from the dashboard. |
+| **PayPal webhooks** | `backend/nudgeycart/app.py` | Verified refund events adjust the saved-sales figures. |
+| **Claude Haiku 5.5** (Anthropic API) | `backend/nudgeycart/agent.py` | The decision agent: reads the cart and behaviour signals, diagnoses why the shopper is leaving, picks one lever among those the policy allows (or none) and writes the offer and its rationale. Structured output, with a rules fallback. |
+| **Channel3** | `backend/nudgeycart/integrations/channel3.py` | Product search for real, in-stock competitor prices of the exact product. Powers the price match lever. |
+| **AG Grid + AG Charts** | `wordpress-plugin/nudgeycart/assets/admin.js` | Merchant dashboard in wp-admin: KPIs, charts, decision log with detail drawer. |
+| **Render** | `render.yaml` | Hosts the API, which also serves the plugin zip and the Playground blueprint. |
+| **WordPress Playground** | `playground/blueprint.json` | Boots the demo store in the visitor's browser. |
+
+In production the success fee would be captured inside the shopper's payment with PayPal multiparty
+`platform_fees`; that needs partner approval, so this prototype bills it with Invoicing.
 
 ## Repository layout
 
